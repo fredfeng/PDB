@@ -1,0 +1,20 @@
+
+This project constaints the current PDB code base, as well as a reasonably
+extensive example of how to use the PDB API.  Builing the project produces two 
+executables:
+
+Executables/buildDB
+Executables/queryDB
+
+Once you build the project, begin by un-zipping and un-taring 20News.tar.gz.
+Then, run Executables/buildDB, followed by Executables/queryDB.
+
+********************************************************************************
+
+Run "scons" to build all default targets.  Optionally add "-k" to keep building
+after errors, or "-j<num>" to build multiple targets simultaneously: these two
+flags work here as they do when using "make".
+
+To remove generated files use "scons -c".  This is akin to "make clean".
+
+Run "scons --help" for more information.

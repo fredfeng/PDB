@@ -1,0 +1,79 @@
+# -*- makefile -*-
+
+# This make variable neeeds to be set to /bin/bash otherwise dash takes over
+# and -e is not correctly interpreted
+SHELL:=/bin/bash
+
+# The makefile generator will automatically find all of the directories in the project that
+# contain .h files, and use them to build up the .h include string...
+# However, if there are some additional include directories that are outside of the project, then
+# they should be listed here.
+# INCLUDE =  -I /some directory
+INCLUDE =  -I /usr/local/include -I /opt/local/include/
+
+# The makefile generator will automatically find all of the directories in the project that
+# contain .m4 files, and use them to build up the .m4 include string...
+# However, if there are some additional include directories that are outside of the project, then
+# they should be listed here.
+M4INCLUDE =
+
+# The makefile that is generated will support a "make clean" that kills all of the .o files,
+# all of the executables, and all of the .cc and .h files that were generated using m4.
+# If there are any other files that you want the Makefile to remove under the "make clean"
+# command, put them here
+REMOVES = PDBTopKQuery/source/y.tab.c PDBTopKQuery/source/y.tab.h PDBTopKQuery/source/lex.yy.c 
+
+# this are the compilers to use for C and C++ files
+CC = gcc
+CXX = g++
+
+# this is the compiler to use for .m4 files
+M4 = m4
+
+# these are the compiler flags that are used when the final linking is done
+LINKFLAGS = -lstdc++ -lpthread
+
+# these are the compiler flags that are used when object files are created
+CCFLAGS = -Wall -Wextra -Werror -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+
+# debug info
+CCFLAGS += -g
+
+# run a Valgrind-like check of the mmap memory allocator
+# CCFLAGS+= -DMMAP_CHECK
+
+# CCFLAGS += -O3 
+
+# C++ dialect selection
+CXXFLAGS = -std=c++0x
+
+# all C flags should be used when compiling C++ too
+CXXFLAGS += $(CCFLAGS)
+
+# yacc/lex executables
+YACC = bison
+LEX = flex
+
+# if there are any special object files that won't be compiled using C++ or m4, then rules for making them
+# won't be automatically generated, and they should be given explicitly here
+ SQLite/object/sqlite3.o: SQLite/source/sqlite3.c  SQLite/headers/sqlite3.h
+	$(CC) $(CCFLAGS) -o SQLite/object/sqlite3.o -c SQLite/source/sqlite3.c
+
+PDBTopKQuery/source/y.tab.c PDBTopKQuery/source/y.tab.h: PDBTopKQuery/source/Parser.y
+	$(YACC) -o PDBTopKQuery/source/y.tab.c -d PDBTopKQuery/source/Parser.y
+	sed -n -e "s/  __attribute__ ((__unused__))$$/# ifndef __cplusplus\n  __attribute__ ((__unused__));\n# endif/" PDBTopKQuery/source/y.tab.c 
+
+PDBTopKQuery/object/y.tab.o: PDBTopKQuery/source/y.tab.c PDBTopKQuery/source/y.tab.h PDBTopKQuery/headers/MetricApplication.h
+	$(CC) $(CCFLAGS) -I PDBTopKQuery/headers/ -o PDBTopKQuery/object/y.tab.o -c PDBTopKQuery/source/y.tab.c
+
+PDBTopKQuery/source/lex.yy.c: PDBTopKQuery/source/Lexer.l
+	$(LEX) -o PDBTopKQuery/source/lex.yy.c PDBTopKQuery/source/Lexer.l
+
+PDBTopKQuery/object/lex.yy.o: PDBTopKQuery/source/lex.yy.c PDBTopKQuery/headers/MetricApplication.h
+	$(CC) $(CCFLAGS) -D_POSIX_SOURCE -D_BSD_SOURCE -D_DEFAULT_SOURCE -std=c11 -Wno-unused-parameter -I PDBTopKQuery/headers/ -o PDBTopKQuery/object/lex.yy.o -c PDBTopKQuery/source/lex.yy.c
+
+makertool: Maker/maker.cc
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+Makefile: makertool Maker/executables Maker/Makefile_prelude
+	./$^

@@ -1,0 +1,223 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1265\cocoasubrtf210
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+\margl1440\margr1440\vieww12840\viewh14760\viewkind1
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\qc
+
+\f0\b\fs28 \cf0 The Pliny Database: Initial Design and API\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\fs24 \cf0 \
+1 Pliny Database Basics\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+At the very highest level, the first version of the Pliny Database (PDB) will be something like a persistent storage and retrieval API. PDB works by storing serialized C++ objects in a (potentially very large and distributed) data file. These C++ objects correspond to pairs that contain a database code fragment (stored using some arbitrary representation that the database does not care about) as well as a list of features that have been extracted from the code fragment (again, each feature is stored using an arbitrary format that the database does not care about). The database then facilitates queries over the stored data set. One key aspect of PDB is that if the distributed version of PDB is used, query evaluation is distributed, which means that if query evaluation requires the execution of very expensive computations over each one of the code fragments, PDB will automatically distributed those computations over (potentially) hundreds of machines.\
+\
+To use PDB, a user instantiates a PDB object (in C++). This has the effect of creating a PDB server with all of the C++ objects that are stored in the database loaded into memory. Queries are issued by calling methods over the PDB object; queries return simple arrays of C++ objects that store the results of the query. \
+\
+Initially, there will be two versions of PDB: a simple, one-thread version that uses a local file to store the serialized C++ object, and a parallel, MPI-based version which answers queries using a compute cluster, where the data are stored in HDFS.\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b \cf0 2 Basic PDB Data Model\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+Regardless of which version of PDB is used, all of the objects archived by PDB are always of type PDBData:\
+\
+class PDBData \{\
+     private:\
+          PDBSearchKey mySearchKey;\
+          PDBStoredData myStoredData;\
+     public:\
+          PDBData (PDBSearchKey &useMe, PDBStoredData &andMe);\
+          PDBSearchKey &getSearchKey ();\
+          PDBStoredData &getData ();\
+          void *serialize (void *toHere, int &size);\
+     // others here\
+\}\
+\
+This class is nothing more than a container for a (key, data) pair. \
+\
+The PDB class itself has something like the following signature:\
+\
+class PDB \{\
+     public:\
+          virtual PDBData *doTopK (PDBTopKQuery querySpec, \
+                 PDBSearchKey  query, int k) = 0;\
+          virtual PDBData *doSelection (PDBSelectionQuery myQuery, int &k) = 0;\
+          virtual void storeData (PDBData *storeUs, int howManyToStore) = 0;\
+\}\
+\
+So a user of PDB writes C++ code that stores and retrieves objects of type PDBData.   That is, the PDB class basically serves as a retrieval engine for PDBData objects. \
+\
+There are two methods that allow for retrieval (one is a top-k search, and one allows search via a boolean selection query). As we\'92ll describe subsequently, search works by invoking user-defined code that performs distance calculations (encapsulated in the PDBTopKQuery class) or that performs the selection (encapsulated in the PDBSelectionQuery class). \
+\
+Storage works by simply sending in an array of PDBData objects that are then written to permanent storage. Initially, it will not be possible to delete data stored in a PDB database.\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b \cf0 3 Features and Data in PDB\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+Let us begin by considering the PDBSearchKey data type. This is essentially just an array of features:\
+\
+class PDBSearchKey \{\
+     public:\
+          PDBFeature getIthFeature (int i);\
+          PDBFeature getFeatureNamed (string findMe);\
+          int getNumFeatures ();\
+     // others\
+\}\
+\
+What is a \'93feature\'94? A feature is some piece of data that has been extracted from a code fragment. It is totally user-defined, in the sense that PDB does not care about its internals at all. The feature could be a set of keywords, a call graph, the name of a method\'85 basically anything. It has only four methods:\
+\
+// user derives from this class to create a new feature type!!\
+class PDBFeature \{\
+     public:\
+          virtual string getType () = 0;\
+          virtual string getName () = 0;\
+          virtual void *serialize (void *toHere, int &size) = 0;\
+     // others\
+\}\
+\
+The first two methods return the type and the name of the feature, respectively. The name is used to refer to the feature during queries, and the type is used for rudimentary type checking, to make user that (for example) a distance metric is not being used on a type that it is not defined over.\
+\
+The third method is defined by the user and provide for serialization of the feature. We note that while the user (that is, the person who is defining the PDBFeature object) can write their own serialization code, the best idea is probably to use a library such as the Boost serialization library that allows for (nearly) arbitrary data structures to be serialized, so that both the code fragment and the features can easily be created and managed programatically. Regardless of how the serialization is implemented, The database never actually looks at the stored data or at the features. Rather, it accesses them through user-defined classes that perform computations over them.\
+\
+Note that the user must also define a class type that knows how to deserialize all of the different PDBFeature objects in use by the system. The name of this class type must be provided to the PDB object at creation, so that the the serialized PDB objects can be deserialized.  This class type must be served from the following:\
+\
+// user derives from this class to create a new feature deserialization machine!!\
+class PDBFeatureDeserializationMachine \{\
+     public:\
+          virtual PDBFeature *deserialize (void *fromHere, int &bytesDeserialized) = 0;\
+     // others\
+\}\
+\
+Similarly, the \'93data\'94 in a PDBData object is just an arbitrary data structure that stores whatever it is that we want to know about the code fragment:\
+\
+// user derives from this class to create a new data type!!\
+class PDBData \{\
+     public:\
+          virtual string getName () = 0;\
+          virtual string getDescription () = 0;\
+     // others\
+\}\
+\
+The first two methods here are purely informational, to help with debugging or lineage, for example. In a way very similar to PDBFeture.getDeta (), the last method is used for serialization. Again, a deserialization class must be provided that knows how to deserialize any PDBData class that is stored in the database:\
+\
+// user derives from this class to create a new data deserialization machine!!\
+class PDBDataDeserializationMachine \{\
+     public:\
+          PDBData *deserialize (void *fromHere, int &bytesDeserialized) = 0;\
+     // others\
+\}\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b \cf0 4 Queries in PDB\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+There are two types of queries that can be run by calling one of these methods on the PDB class: top-k queries and selections. A top k query returns exactly k results (those k results closest to a query object, where closest is defined using Euclidean distance) and a selection returns all of those database objects that match a particular boolean selection predicate. \
+\
+So if I (as a user) want to issue a query, I simply create a PDB object, then I create an appropriate query type, and call either doTopK or doSelection. I will then get back an array of PDBData objects answering my query.\
+\
+How are queries created? To discuss this, let\'92s first consider the PDBTopKQuery class, which encapsulates PDB\'92s top k query functionality.\
+\
+class PDBTopKQuery \{\
+     public:\
+         createFromString (string queryString);\
+     // others\
+\}\
+\
+One of these query objects is created by sending in a string whose contents correspond to the query that one wants answered. The query syntax is quite simple. For example, a query might be of the form:\
+\
+\'93(0.4, (query.att2, target.att4), metric1), (0.6, (query.thisAtt, target.thatAtt), metric2)\'94\
+\
+What this means is that we are going to run a top-k query where we are comparing the feature att2 in the query to the feature att4 in a database object using the metric metric1. Also, we are comparing the feature thisAtt in the query to the feature thatAtt in the database object using metric2. When computing the Euclidian distance (which combines the result of these two comparisons) these two metrics are weighted according to the two specified weights; that is, 0.4 and 0.6.\
+\
+In addition, PDB can answer simple \'93selection\'94 queries. These are queries that check a boolean predicate against every item in the database, and return only those objects that match the query. This functionality is encapsulated by the PDBSelectionQuery class:\
+\
+class PDBSelectionQuery \{\
+     public:\
+           createFromString (string queryString);\
+     // others\
+\}\
+\
+One of these query objects is created by sending a string whose contents are of the form (for example):\
+\
+\'93(pred1 att1) and (pred3 att4) or (pred4 att6)\'94\
+\
+This has the obvious meaning. The predicate pred1 is applied to the contents of att1 for each database object; also, pred3 is applied to att4, and pred4 is applied to att6. Each predicate must return a boolean when it is applied to the attribute. Just as metrics are user-defined C++ classes, predicates are also user-defined C++ classes. If the boolean expression over all of the predicate applications is satisfied, then the corresponding PDBData object is contained in the result set.\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b \cf0 4 Metrics and Predicates\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+Distance metric evaluators are user-defined functions, which implement the following interface:\
+\
+// the user derives from this class to create a new distance metric evaluator \
+class PDBMetric \{\
+     public:\
+          virtual string getName () = 0;\
+          virtual string acceptsSourceType () = 0;\
+          virtual string acceptsTargetType () = 0;\
+          virtual double computeDistance (PDBFeature &source, PDBFeature &target) = 0;\
+     // others\
+\}\
+\
+The idea is that users of PDB can compile their own PDBMetric classes into .so (shared library) files. These compiled classes are then loaded up at runtime, when a PDB object is created. When a PDBTopKQuery class is created, all of the objects in the database are scanned. The appropriate PDBFeature objects associated with each of the PDBData objects in the database are then used in conjunction with the various PDBMetric classes to implement the top k query as specified in the query string. \
+\
+To create a new metric, one need only write a new class that is derived from the PDBMetric type, compile this into a .so file, and then change a configuration file so that it points to the new .so file. \
+\
+Note that the computeDistance function is totally user-defined. It simply accepts a pair of PDBFeature objects, and then computes the distance between them. Typically, it is assumed that the programmer will use PDBFeature.getData () to obtain a pointer to the in-memory representation over each of the features, and then perform some computation over them. For example, if the two features both contain bags of system calls made by the corresponding pieces of code, then PDBFeature.getData () might return a pointer to an STL vector of string objects.  The computeDistance method would then perform the comparison over the two STL vectors, and return a double that describes the similarity between the two.\
+\
+Predicates work similarly, except that they return a boolean value (yes or no) and look at a single feature, and not multiple features. A predicate might be used to do something like look at the bag of system calls, and determine whether or not the libc write function is called. \
+\
+This is encapsulated by the following class:\
+\
+// the user derives from this class to create a new boolean pred type for PDB to evaluate\
+class PDBPredicate \{\
+     public:\
+          virtual string getName () = 0;\
+          virtual string acceptType () = 0;\
+          virtual boolean eval (PDBFeature &onMe) = 0;\
+     // others\
+\}\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b \cf0 5 Some Notes Regarding Serialization and the Choice of C++\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+At least initially, we have chosen to rely heavily on C++. One can use PDB with any set of user-defined distance metrics/evaluators, features, serialization format, etc., but doing do requires that the desired functionality be implemented using C++. For example, distance metrics must always be evaluated using the C++ language. \
+\
+It is probably necessary to agree on a language at this point because having multi-language support is going to simply be too difficult. There are a few important implications of this.\
+\
+In one sense, agreeing on C++ is somewhat limiting because PDB is really a distributed computation engine. Evaluation of distance metrics is automatically parallelized by PDB across a potentially very large compute cluster, but distance metric evaluation must be written in C++. Thus, we are effectively limiting any massively parallel computation managed by PDB to those written in C++. This 
+\i is
+\i0  something of a limitation, considering how expensive it might be to run standard program analysis tasks over all of the code fragments in a very large data set.\
+\
+In another sense, agreeing on a language is not that limiting. PDB can be used with other languages, just not to parallelize computations in those languages. PDB can be used to archive code fragments, for example, and then used to retrieve those code fragments matching a query. The serializer associated with the features and data that are returned can then be used to write the query results to a file (or to a shared memory location) where they can be deserialized into objects usable by another language, such as F#. But it is important to understand that those F# computations cannot then be run automatically by PDB in parallel across the cluster. If these computations are expensive, that might be a problem.\
+\
+Finally, we mention that assuming that PDB is used in this way, agreeing on a project-wide serialization format or formats will be very important. Though PDB itself does not care about serialization formats, if the format written out by the C++ serializer is not amenable to deserialization by TA4 F# code (for example) it will be a problem, potentially requiring some sort of translator between formats.\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b \cf0 6 Plans for Implementing PDB\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\b0 \cf0 \
+After getting feedback on the design and API, we would like to distribute a single-user version of PDB that comes complete with a few sample data files that are perhaps up to a couple of Gigabytes in size, as well as a set of useful metrics and features. It seems reasonable to shoot for the beginning of June as a target date for this. This is going to require careful collaboration and coordination with others on the Pliny project, since we\'92ll need to make sure that the metrics and representations, as well as the software to go through the TA1 archives in order to do the extraction, are being developed in parallel with the database.\
+\
+By October 1, the goal would be to have a first, fully distributed version of PDB that runs on top of HDFS and MPI. The idea will be to create a public Amazon machine instance that comes complete with the software and some version or versions of the data. All one has to do to use PDB in a distributed fashion is to requisition a set of machines from EC2 using this machine instance, and then run a script that starts everything up and loads the database from the canned data. \
+\
+As various subgroups within the Pliny project create their own useful data sets, representations, and metrics, we can update the two versions to include this new data and code.\
+\
+Based on our experience, the learning curve for this sort of systems project is steep, and soon one realizes that any fundamental errors were made. By the start of 2016, we should be hard at work on the next iteration of PDB, which might include a re-write of the system.}

@@ -1,0 +1,2 @@
+[flake8]
+builtins = ARGUMENTS,BoolVariable,CacheDir,Default,Delete,Environment,Glob,Help,Install,Mkdir,Variables

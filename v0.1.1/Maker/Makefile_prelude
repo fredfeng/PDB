@@ -1,0 +1,61 @@
+# This make variable neeeds to be set to /bin/bash otherwise dash takes over
+# and -e is not correctly interpreted
+SHELL:=/bin/bash
+
+# The makefile generator will automatically find all of the directories in the project that
+# contain .h files, and use them to build up the .h include string...
+# However, if there are some additional include directories that are outside of the project, then
+# they should be listed here.
+# INCLUDE =  -I /some directory
+INCLUDE =  -I /usr/local/include -I /opt/local/include/
+
+# The makefile generator will automatically find all of the directories in the project that
+# contain .m4 files, and use them to build up the .m4 include string...
+# However, if there are some additional include directories that are outside of the project, then
+# they should be listed here.
+M4INCLUDE =
+
+# The makefile that is generated will support a "make clean" that kills all of the .o files,
+# all of the executables, and all of the .cc and .h files that were generated using m4.
+# If there are any other files that you want the Makefile to remove under the "make clean"
+# command, put them here
+REMOVES = PDBTopKQuery/source/y.tab.c PDBTopKQuery/source/y.tab.h PDBTopKQuery/source/lex.yy.c 
+
+# this is the compiler to use for C++ files
+CC = g++
+
+# this is the compiler to use for .m4 files
+M4 = m4
+
+# these are the compiler flags that are used when the final linking is done
+LINKFLAGS = -lstdc++ 
+
+# these are the compiler flags that are used when object files are created
+CCFLAGS = -w -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE 
+
+# debug info
+CCFLAGS += -g -c -std=c++0x
+
+# run a Valgrind-like check of the mmap memory allocator
+# CCFLAGS+= -DMMAP_CHECK
+
+# CCFLAGS += -O3 
+
+# yacc/lex executables
+YACC = bison
+LEX = flex
+
+# if there are any special object files that won't be compiled using C++ or m4, then rules for making them
+# won't be automatically generated, and they should be given explicitly here
+ SQLite/object/sqlite3.o: SQLite/source/sqlite3.c  SQLite/headers/sqlite3.h
+	gcc $(CCFLAGS) -o SQLite/object/sqlite3.o SQLite/source/sqlite3.c
+
+PDBTopKQuery/object/y.tab.o: PDBTopKQuery/source/Parser.y PDBTopKQuery/headers/MetricApplication.h
+	$(YACC) -o PDBTopKQuery/source/y.tab.c -d PDBTopKQuery/source/Parser.y
+	sed -n -e "s/  __attribute__ ((__unused__))$$/# ifndef __cplusplus\n  __attribute__ ((__unused__));\n# endif/" PDBTopKQuery/source/y.tab.c 
+	g++ $(CCFLAGS) -I PDBTopKQuery/headers/ -o PDBTopKQuery/object/y.tab.o PDBTopKQuery/source/y.tab.c
+
+PDBTopKQuery/object/lex.yy.o: PDBTopKQuery/source/Lexer.l PDBTopKQuery/headers/MetricApplication.h
+	$(LEX) -o PDBTopKQuery/source/lex.yy.c PDBTopKQuery/source/Lexer.l
+	gcc -g -c -I PDBTopKQuery/headers/ -o PDBTopKQuery/object/lex.yy.o PDBTopKQuery/source/lex.yy.c
+

@@ -1,0 +1,4 @@
+---
+Checks:          '*,-google-build-using-namespace,-google-readability-braces-around-statements,-google-readability-function,-google-readability-namespace-comments,-llvm-header-guard,-llvm-include-order,-llvm-namespace-comment,-readability-braces-around-statements'
+HeaderFilterRegex: '.*'
+AnalyzeTemporaryDtors: true

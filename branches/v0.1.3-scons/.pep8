@@ -1,0 +1,3 @@
+[flake8]
+builtins = ARGUMENTS,BoolVariable,CacheDir,Default,Dir,Environment,Glob,Help,Install,Value,Variables
+max-line-length = 102

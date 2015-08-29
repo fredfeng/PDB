@@ -1,0 +1,26 @@
+Executables/buildDB:
+      PDBTopKQuery/object/y.tab.o
+      PDBTopKQuery/object/lex.yy.o
+      PDBTopKQuery
+      PDBData
+      BuildDBExample
+      PDBFeatureType
+      Deserialization
+      PDBMetric
+      ExampleMetricsFeaturesData
+      Database
+      PDBCatalog
+
+Executables/queryDB:
+      PDBTopKQuery/object/y.tab.o
+      PDBTopKQuery/object/lex.yy.o
+      PDBTopKQuery
+      PDBData
+      PDBFeatureType
+      QueryDBExample
+      Deserialization
+      PDBMetric
+      ExampleMetricsFeaturesData
+      Database
+      PDBCatalog
+

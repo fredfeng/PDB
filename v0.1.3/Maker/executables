@@ -1,0 +1,55 @@
+
+Executables/runDBServer:
+      PDBServer
+      PDBTopKQuery/object/y.tab.o
+      PDBTopKQuery/object/lex.yy.o
+      PDBTopKQuery
+      PDBCatalog
+      ExampleMetricsFeaturesData
+      Utilities 
+      PDBWork
+      PDBCatalog
+      Deserialization
+      DBServerFrontEnd
+      DBServerBackEnd
+      DataAndQueries
+      Communication
+
+Executables/buildDB:
+      BuildDBExample
+      PDBTopKQuery/object/y.tab.o
+      PDBTopKQuery/object/lex.yy.o
+      PDBTopKQuery
+      Utilities
+      Deserialization
+      PDBCatalog
+      ExampleMetricsFeaturesData
+      DataAndQueries
+      Communication
+      Client
+
+Executables/queryDB:
+      QueryDBExample
+      PDBTopKQuery/object/y.tab.o
+      PDBTopKQuery/object/lex.yy.o
+      PDBTopKQuery
+      Deserialization
+      Utilities
+      PDBCatalog
+      ExampleMetricsFeaturesData
+      DataAndQueries
+      Communication
+      Client
+
+Executables/shutDownDB:
+      ShutDownDB 
+      PDBTopKQuery/object/y.tab.o
+      PDBTopKQuery/object/lex.yy.o
+      PDBTopKQuery
+      Deserialization
+      Utilities
+      PDBCatalog
+      ExampleMetricsFeaturesData
+      DataAndQueries
+      Communication
+      Client

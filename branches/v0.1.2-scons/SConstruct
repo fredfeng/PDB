@@ -1,0 +1,143 @@
+########################################################################
+#
+#  high-level build target configuration
+#
+
+#  map each executable target to the subdirectories (modules) from
+#  which it is built; main build targets will be constructed from this
+
+targets = {
+    'buildDB': (
+        'BuildDBExample',
+        'Database',
+        'Deserialization',
+        'ExampleMetricsFeaturesData',
+        'PDBCatalog',
+        'PDBData',
+        'PDBFeatureType',
+        'PDBMetric',
+        'PDBTopKQuery',
+    ),
+    'queryDB': (
+        'Database',
+        'Deserialization',
+        'ExampleMetricsFeaturesData',
+        'PDBCatalog',
+        'PDBData',
+        'PDBFeatureType',
+        'PDBMetric',
+        'PDBTopKQuery',
+        'QueryDBExample',
+    )
+}
+
+
+########################################################################
+#
+#  general scons configuration
+#
+
+# speed up rebuilds by caching constructed targets
+CacheDir('.scons-cache')
+
+# command-line configurable options
+variables = Variables('.scons-variables', ARGUMENTS)
+variables.AddVariables(
+    BoolVariable('gprof', 'instrument for gprof performance profiling', False),
+)
+
+# general build environment; could be cloned if customizations are
+# needed in specific contexts, but for now this one generic
+# environment is all we need
+env = Environment(
+    CCFLAGS=(
+        '-Wall', '-Wextra', '-Werror',
+        '-g',
+        '-pthread',
+    ),
+    CFLAGS='-std=c11',
+    CPPDEFINES={
+        # broad-scope feature macros
+        '_BSD_SOURCE': None,     # for strdup
+        '_DEFAULT_SOURCE': None,  # for strdup
+        '_POSIX_SOURCE': None,    # for fileno
+
+        # support for files larger than 4GB
+        '_FILE_OFFSET_BITS': '64',
+        '_LARGEFILE_SOURCE': None,
+    },
+    CPPPATH=(
+        Glob('*/headers'),
+        '/usr/local/include',
+        '/opt/local/include',
+    ),
+    CXXFLAGS=(
+        '$CXXFLAGS',
+        '-std=c++0x',
+    ),
+    LEXCOM='$LEX $LEXFLAGS -o $TARGET $SOURCES',
+    LINKFLAGS=('-pthread',),
+    OBJPREFIX='../object/',
+    PROGPREFIX='#Executables/',
+    variables=variables,
+    YACCFLAGS='-d',             # create header too, not just source
+)
+
+# add configurable options to "--help" output
+Help(variables.GenerateHelpText(env))
+
+# remember configuration settings across builds
+variables.Save(variables.files[0], env)
+
+# optional performance profiling
+if env['gprof']:
+    env.AppendUnique(
+        CCFLAGS=(
+            '-pg',
+            '-O2',
+            '-fno-inline-functions',
+            '-fno-inline-functions-called-once',
+            '-fno-omit-frame-pointer',
+            '-fno-optimize-sibling-calls',
+        ),
+        CPPDEFINES={'NDEBUG': None},
+        LINKFLAGS=('-pg',),
+    )
+
+# known to build cleanly with gcc-4.7.0 and later, but that's not the
+# default installation on UW-Madison CS machines; non-UW machines
+# presumably have no such path, so this will simply be ignored
+env.PrependENVPath('PATH', '/s/gcc-5.1.0/bin')
+
+
+########################################################################
+#
+#  detailed build instructions for specific targets
+#
+
+# build C sources from parsers and lexers, which I collectively call
+# "texters" here for lack of a better term; must establish these
+# targets before using "*.c" glob below to find all C sources
+for texter in Glob('*/source/*.[ly]'):
+    env.CFile(texter)
+
+# iterate through the main targets defined at the top of this file
+for target, subdirs in targets.iteritems():
+
+    # build executable from all C/C++ sources in given components;
+    # this includes any generated lexer/parser code from CFile above
+    sources = [Glob('%s/source/*.%s' % (subdir, suffix))
+               for subdir in subdirs for suffix in 'c', 'cc']
+    env.Program(target, sources)
+
+    # corresponding headers, presumably exported for others to use?
+    headers = [Glob('%s/headers/*.h' % subdir) for subdir in subdirs]
+    headerdir = 'Headers' + target
+    installed = Install(headerdir, headers)
+    Default(headerdir)
+
+env.Default('$PROGPREFIX')
+
+# Local variables:
+# flycheck-flake8rc: ".pep8"
+# End:

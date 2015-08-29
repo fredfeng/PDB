@@ -1,0 +1,66 @@
+
+Building a project is always a pain.  One can maintain a Makefile manually, but
+this quickly becomes difficult as the project grows, and the dependencies become
+very complex.  
+
+The way that we are handling this (at least initially) is by using a nasty but
+useful tool that I built some time ago, called Maker.  This tool automatically
+builds a Makefile from a specific directoy structure.  We can switch to something
+else later, but the goal now is just to get things going!!
+
+To use maker, simple run the following commands, from the root of the directory
+tree:
+
+g++ -o makertool Maker/maker.cc
+./makertool Maker/executables Maker/Makefile_prelude
+
+This will build a Makefile for the project.
+
+In theory, all you have to do is to then type "make", and the project will build.
+When you add new source/header files or think that you have changed the dependencies in
+the project in any way, run "make clean" and then just re-run Maker to re-build the 
+Makefile (always remember to run "make clean" before you re-build the Makefile!).
+
+If you add new source directories or you add other strange things (say, Python code)
+that Maker does not understand, you'll have to go in and chance thed files
+Maker/executables and Maker/Makefile_prelude.  Here is a bit of documentation on
+Maker, just in case you need to do this.
+
+--Chris, May 15, 2015
+
+********************************************************************************
+
+Here is an overview of what the makefile-generation program does.
+
+Maker assumes that the root directory for the project has a bunch of sub-directories with arbitrary names:
+
+AttributeManager
+CodeGenerator
+M4
+DiskIO
+etc.
+
+To generate the Makefile, Maker takes in a file that has a list of directory names (the "executables" file) that should be used as well as a desired executable name.  For each directory that is named, Maker goes into the directory, and expect to see some non-empty subset of exactly the following sub-directories:
+
+headers
+source
+m4
+object
+
+Note the "m4" directory.  Maker is specifically meant to deal with C++ codes that make heavy use of the m4 preprocessor.  If the C++ codes do not make use of m4, that is not a problem, however.
+
+In addition, "headers", "source" and "m4" can have an optional "private" subdirectory, where you can put whatever ".h" files (in the case of "headers") and whatever ".cc" files (in the case of "source") and ".m4" files (in the case of "m4") that you want.  
+
+When Maker creates the Makefile, if it exists, it first goes into the "m4" subdirectory, and looks for file names like "Code.cc.m4", or "Header.h.m4".  If any of those exist, then it adds a rule to the Makefile that will use m4 to compile "Code.cc" (resp., "Header.h") and put it into the "source" (resp., "headers") directory.
+
+All of the "headers" and "headers/private" subdirectories are used to build up an "INCLUDE" string in the Makefile.  If there are any ".m4" files in some "m4" or "m4/private" that do *not* compile into a ".cc" or ".h" file, then those subdirectories are used to build up an "M4INCLUDE" string.
+
+If there is a ".cc" or a ".cc.m4" under "source" or "m4", Maker creates rules in the Makefile to compile the resulting C++ source and put the ".o" file into the "object" subdirectory.
+
+Then, Maker adds a final rule that makes the executable by compiling all of the various ".o" files that Maker has rules for.
+
+It is easy to have multiple executables, or different unit tests.  For each one, you just list a different set of subdirectories that need to be compiled together (the set of subdirectories that the particular executable needs).
+
+I should also add that it is fine to have other subdirectories and files in here (for example, you could README files all over the place)... it should not screw up Maker just ignores them.
+
+Finally, any special stuff that can't be handled by Maker can be added to the Makefile that is constructed by adding it to the Makefile_prelude file.  This file is prepended to the Makefile that is generated.  
